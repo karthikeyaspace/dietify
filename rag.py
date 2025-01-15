@@ -12,6 +12,11 @@ from typing import List
 
 from config import env
 
+
+DATASET_PATH = env['DATASET_PATH']
+FAISS_STORE = env['FAISS_STORE']
+
+
 llm = GoogleGenerativeAI(
     model="gemini-1.5-flash",
     api_key=env["GOOGLE_API_KEY"],
@@ -22,9 +27,6 @@ embeddings_model = GoogleGenerativeAIEmbeddings(
     google_api_key=env['GOOGLE_API_KEY']
 )
 
-DATASET = "data/data.csv"
-FAISS_STORE = "store"
-
 
 class User(BaseModel):
     id: str
@@ -33,8 +35,8 @@ class User(BaseModel):
     gender: str
     height: int
     weight: int
-    diet_type: List[str]  # paleo, vegan, keto, mediterranean, dash
-    cuisine: List[str]
+    diet_type: List[str]            # paleo, vegan, keto, mediterranean, dash
+    cuisine: List[str]              # indian, asian, italian, mexican, american
     allergies: List[str] | None
     calorie_goal: int
 
@@ -104,7 +106,7 @@ class App():
     # generating embeddings and storing em in faiss store
 
     def create_embeddings(self):
-        data = pd.read_csv(DATASET)
+        data = pd.read_csv(DATASET_PATH)
 
         # used in similarity search
         documents = [
@@ -124,11 +126,9 @@ class App():
         self.store.save_local(FAISS_STORE)
         print("Embeddings created from dataset")
 
-
     def get_similar_docs(self, query: str, k: int = 20):
         docs = self.store.similarity_search(query, k=k)
         return docs
-
 
     def generate_response(self, user_profile: User):
         # Retrieve relevant recipes from the vector store
