@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import List
 
 from config import env
-
+from models import User
 
 DATASET_PATH = env['DATASET_PATH']
 FAISS_STORE = env['FAISS_STORE']
@@ -26,19 +26,6 @@ embeddings_model = GoogleGenerativeAIEmbeddings(
     model="models/embedding-001",
     google_api_key=env['GOOGLE_API_KEY']
 )
-
-
-class User(BaseModel):
-    id: str
-    name: str
-    age: int
-    gender: str
-    height: int
-    weight: int
-    diet_type: List[str]            # paleo, vegan, keto, mediterranean, dash
-    cuisine: List[str]              # indian, asian, italian, mexican, american
-    allergies: List[str] | None
-    calorie_goal: int
 
 
 class App():
@@ -78,6 +65,7 @@ class App():
         )
 
     # initialization of vector stoer
+
     def vector_store(self):
         if os.path.exists(FAISS_STORE):
             print("Loading existing FAISS store from disk...")
@@ -132,9 +120,7 @@ class App():
 
     def generate_response(self, user_profile: User):
         # Retrieve relevant recipes from the vector store
-        # can be made better
-
-        print("User Profile: ", user_profile)
+        # can be made better 
 
         docs = self.get_similar_docs(
             query=', '.join(user_profile.cuisine) +
@@ -187,23 +173,72 @@ class App():
             return None
 
     def regenerate_response(self, query: str, user_profile: User, prev_response: dict):
-        return f"Regenerate api for query '{query}' and user_profile '{user_profile}' and prev_response '{prev_response}'"
+
+        prev_recipes = [meal['name'] for meal in prev_response['meals']]
+
+        docs = self.get_similar_docs(
+            query=query + ', '.join(user_profile.cuisine) +
+            ', '.join(user_profile.diet_type)
+        )
+
+        new_recipes = [
+            f"Recipe: {doc.metadata['Recipe_name']}, {doc.page_content}"
+            for doc in docs
+            if doc.metadata['Recipe_name'] not in prev_recipes
+        ]
+
+        if not new_recipes:
+            new_recipes = [
+                f"Recipe: {doc.metadata['Recipe_name']}, {doc.page_content}"
+                for doc in docs
+            ]
+
+        diet_type_str = ', '.join(user_profile.diet_type)
+        cuisine_str = ', '.join(user_profile.cuisine)
+        allergies_str = ', '.join(
+            user_profile.allergies) if user_profile.allergies else 'none'
+        recipes_str = "\n".join(new_recipes)
+
+        chain = LLMChain(llm=self.llm, prompt=self.prompt_template)
+
+        response = chain.invoke({
+            "age": user_profile.age,
+            "gender": user_profile.gender,
+            "height": user_profile.height,
+            "weight": user_profile.weight,
+            "diet_type": diet_type_str,
+            "cuisine": cuisine_str,
+            "allergies": allergies_str,
+            "calorie_goal": user_profile.calorie_goal,
+            "recipes": recipes_str
+        })
+
+        format_res = response['text'].strip()
+        if format_res.startswith("```json") and format_res.endswith("```"):
+            format_res = format_res[7:-3].strip()
+
+        try:
+            res = json.loads(format_res)
+            return res
+        except Exception as e:
+            print(f"Error parsing response: {e}")
+            return None
 
 
-# if __name__ == "__main__":
-#     ai = App()
+if __name__ == "__main__":
+    ai = App()
 
-#     ai.generate_response(User(
-#         **{
-#             "id": "1",
-#             "name": "Karthikeya",
-#             "age": 19,
-#             "gender": "male",
-#             "height": 174,
-#             "weight": 75,
-#             "diet_type": ["mediterranean", "keto"],
-#             "cuisine": ["indian", "asian"],
-#             "allergies": ["beef", "nuts"],
-#             "calorie_goal": 3500
-#         }
-#     ))
+    ai.generate_response(User(
+        **{
+            "id": "1",
+            "name": "Karthikeya",
+            "age": 19,
+            "gender": "male",
+            "height": 174,
+            "weight": 75,
+            "diet_type": ["mediterranean", "keto"],
+            "cuisine": ["indian", "asian"],
+            "allergies": ["beef", "nuts"],
+            "calorie_goal": 3500
+        }
+    ))

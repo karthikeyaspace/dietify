@@ -1,26 +1,26 @@
 import streamlit as st
-from rag import App, User
+from ai import App, User
 
-# Initialize the App class
 ai = App()
 
-# Set page configuration
 st.set_page_config(page_title="Diet Plan Generator",
                    page_icon="🍽️", layout="wide")
 
-# Title and description
 st.title("🍽️ Diet Plan Generator")
 st.markdown(
     "Generate a personalized diet plan based on your preferences and goals.")
-
-# Helper function to calculate BMI
 
 
 def calculate_bmi(height, weight):
     return weight / ((height / 100) ** 2)
 
 
-# User onboarding form
+# Initialize session state variables
+if "response" not in st.session_state:
+    st.session_state.response = None
+if "user_profile" not in st.session_state:
+    st.session_state.user_profile = None
+
 with st.form("user_profile_form"):
     st.subheader("Your Profile")
     col1, col2 = st.columns(2)
@@ -34,7 +34,6 @@ with st.form("user_profile_form"):
         weight = st.number_input(
             "Weight (kg)", min_value=30, max_value=300, value=70)
 
-        # Calculate and display BMI
         if height > 0 and weight > 0:
             bmi = calculate_bmi(height, weight)
             st.metric("BMI", f"{bmi:.1f}")
@@ -71,7 +70,6 @@ with st.form("user_profile_form"):
 
     submitted = st.form_submit_button("Generate Diet Plan")
 
-# Generate diet plan
 if submitted:
     if not name or not diet_type or not cuisine:
         st.error("Please fill in all required fields.")
@@ -93,10 +91,11 @@ if submitted:
             try:
                 response = ai.generate_response(user_profile)
                 if response:
+                    st.session_state.response = response
+                    st.session_state.user_profile = user_profile
                     st.success("Diet plan generated successfully!")
                     st.subheader("Your Diet Plan")
 
-                    # Display meals in a visually appealing way
                     for meal in response["meals"]:
                         with st.container():
                             st.markdown(f"### {meal['name']}")
@@ -116,20 +115,38 @@ if submitted:
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
-# Regenerate diet plan
-if "response" in locals() and response:
+
+if st.session_state.response:
     st.subheader("Not satisfied? Regenerate your plan!")
-    query = st.text_input("What would you like to change?",
-                          placeholder="e.g., more protein, less carbs")
+    query = st.text_input(
+        "What would you like to change?",
+        placeholder="e.g., more protein, less carbs, different cuisine"
+    )
     if st.button("Regenerate"):
         with st.spinner("Regenerating your diet plan..."):
             try:
                 regenerate_response = ai.regenerate_response(
-                    query, user_profile, response)
+                    query, st.session_state.user_profile, st.session_state.response
+                )
                 if regenerate_response:
+                    st.session_state.response = regenerate_response
                     st.success("Diet plan regenerated successfully!")
                     st.subheader("Your New Diet Plan")
-                    st.json(regenerate_response)
+
+                    for meal in regenerate_response["meals"]:
+                        with st.container():
+                            st.markdown(f"### {meal['name']}")
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("Calories", f"{
+                                          meal['calories']} kcal")
+                            with col2:
+                                st.metric("Protein", f"{meal['protein']}g")
+                            with col3:
+                                st.metric("Carbs", f"{meal['carbs']}g")
+                            with col4:
+                                st.metric("Fat", f"{meal['fat']}g")
+                            st.markdown("---")
                 else:
                     st.error("Failed to regenerate diet plan. Please try again.")
             except Exception as e:
